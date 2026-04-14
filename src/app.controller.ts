@@ -1,0 +1,34 @@
+import express from "express"
+import type { NextFunction,Request,Response } from "express";
+import "dotenv/config";
+import cors from "cors";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
+import { AppError, globalErrorHandler } from "./common/utils/global/response.error.js";
+import authRouter from "./modules/auth/auth.controller.js";
+import connectionDB from "./DB/connectionDB.js";
+const app : express.Application = express();
+const port : number = Number(process.env.PORT) || 3000
+const bootstrap = ()=>{
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 200, // Limit each IP to 50 requests per `window`
+    message: "To Many Request Try After 15 Minutes",
+    legacyHeaders: false,
+  });
+  app.use(cors(), helmet(), limiter, express.json());
+  connectionDB();
+  app.get("/", (req:Request, res:Response) => {
+    res.status(200).json({ message: "Welcome In My Api" });
+  });
+  app.use("/auth",authRouter)
+  app.use("{/*demo}", (req:Request, res:Response) => {
+    throw new AppError(`Url ${req.originalUrl} Not Found!`, 404);
+  });
+  app.use(globalErrorHandler);
+  app.listen(port,()=>{
+    console.log(`Server Is Runing On Port ${port}`);
+  })
+}
+
+export default bootstrap;
