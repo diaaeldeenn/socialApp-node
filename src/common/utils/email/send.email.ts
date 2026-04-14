@@ -12,7 +12,7 @@ export const sendEmail = async (mailOptions:Mail.Options) => {
     },
   });
   const info = await transporter.sendMail({
-    from: `"SarahahApp Ceo" <${process.env.GMAIL_USER}>`,
+    from: `"SocialApp Ceo" <${process.env.GMAIL_USER}>`,
     ...mailOptions
   });
 
