@@ -2,7 +2,7 @@ import {} from "../../DB/models/user.model.js";
 import { Types } from "mongoose";
 import UserRepository from "../../DB/repository/user.repository.js";
 import { CompareHash, Hash, } from "../../common/utils/security/hash.security.js";
-import { decrypt, encrypt } from "../../common/utils/security/encrypt.security.js";
+import { decrypt, encrypt, } from "../../common/utils/security/encrypt.security.js";
 import { successResponse } from "../../common/utils/global/response.success.js";
 import { generateOtp, sendEmail } from "../../common/utils/email/send.email.js";
 import { email_Template } from "../../common/utils/email/email.template.js";
@@ -10,8 +10,11 @@ import { AppError } from "../../common/utils/global/response.error.js";
 import { ProviderEnum } from "../../common/enum/user.enum.js";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
+import RedisService from "../../common/service/redis.service.js";
+import { sendEmailOtp } from "../../common/utils/email/email.otp.js";
 class Authservice {
     _userModel = new UserRepository();
+    _redisService = RedisService;
     constructor() { }
     signup = async (req, res, next) => {
         let { userName, email, password, age, address, gender, phone } = req.body;
@@ -19,28 +22,77 @@ class Authservice {
         if (emailExist) {
             throw new AppError("Email Already Exist", 409);
         }
-        const user = await this._userModel.create({
-            userName,
-            email,
-            password: Hash({ plainText: password }),
-            age,
-            address,
-            gender,
-            phone: phone ? encrypt(phone) : null,
+        try {
+            const user = await this._userModel.create({
+                userName,
+                email,
+                password: Hash({ plainText: password }),
+                age,
+                address,
+                gender,
+                phone: phone ? encrypt(phone) : null,
+            });
+            const otp = await generateOtp();
+            await sendEmail({
+                to: email,
+                subject: "Email Confirmation",
+                html: email_Template(otp),
+            });
+            await this._redisService.setValue({
+                key: `otp::${email}`,
+                value: Hash({ plainText: `${otp}` }),
+                ttl: 60 * 2,
+            });
+            await this._redisService.setValue({
+                key: `max_otp::${email}`,
+                value: "1",
+                ttl: 60 * 5,
+            });
+            successResponse({ res, message: "Signup Success", data: user });
+        }
+        catch (error) {
+            next(error);
+        }
+    };
+    confirmEmail = async (req, res, next) => {
+        const { email, otp } = req.body;
+        const otpExist = await this._redisService.getValue(`otp::${email}`);
+        if (!otpExist) {
+            throw new Error("Otp Expired");
+        }
+        if (!CompareHash({ plainText: otp, cipherText: otpExist })) {
+            throw new Error("Invalid Otp");
+        }
+        const user = await this._userModel.findOneAndUpdate({
+            filter: { email, confirmed: false },
+            update: { confirmed: true },
         });
-        const otp = await generateOtp();
-        await sendEmail({
-            to: email,
-            subject: "Email Confirmation",
-            html: email_Template(otp),
+        if (!user) {
+            throw new Error("User Not Exist");
+        }
+        await this._redisService.deleteKey(`otp::${email}`);
+        successResponse({ res, message: "Email confirmed Succefully!" });
+    };
+    resendOtp = async (req, res, next) => {
+        const { email } = req.body;
+        const user = await this._userModel.findOne({
+            filter: { email, confirmed: false },
         });
-        successResponse({ res, message: "Signup Success", data: user });
+        if (!user) {
+            throw new Error("User Not Exist Or Already Confirmed");
+        }
+        await sendEmailOtp(email);
+        successResponse({ res, message: "Otp Resend Succefully!" });
     };
     signIn = async (req, res, next) => {
         try {
             const { email, password } = req.body;
             const user = await this._userModel.findOne({
-                filter: { email, provider: ProviderEnum.local },
+                filter: {
+                    email,
+                    provider: ProviderEnum.local,
+                    confirmed: true,
+                },
             });
             if (!user) {
                 throw new AppError("User Not Exist Or Not Confirmed Yet !", 409);

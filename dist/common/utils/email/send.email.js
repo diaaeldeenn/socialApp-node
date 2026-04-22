@@ -10,7 +10,7 @@ export const sendEmail = async (mailOptions) => {
         },
     });
     const info = await transporter.sendMail({
-        from: `"SarahahApp Ceo" <${process.env.GMAIL_USER}>`,
+        from: `"SocialApp Ceo" <${process.env.GMAIL_USER}>`,
         ...mailOptions
     });
     console.log("Message sent: %s", info.messageId);

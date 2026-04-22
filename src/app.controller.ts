@@ -7,9 +7,10 @@ import { rateLimit } from "express-rate-limit";
 import { AppError, globalErrorHandler } from "./common/utils/global/response.error.js";
 import authRouter from "./modules/auth/auth.controller.js";
 import connectionDB from "./DB/connectionDB.js";
+import RedisService from "./common/service/redis.service.js";
 const app : express.Application = express();
 const port : number = Number(process.env.PORT) || 3000
-const bootstrap = ()=>{
+const bootstrap = async ()=>{
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     limit: 200, // Limit each IP to 50 requests per `window`
@@ -18,6 +19,7 @@ const bootstrap = ()=>{
   });
   app.use(cors(), helmet(), limiter, express.json());
   connectionDB();
+  await RedisService.connect();
   app.get("/", (req:Request, res:Response) => {
     res.status(200).json({ message: "Welcome In My Api" });
   });

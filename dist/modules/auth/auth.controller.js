@@ -1,10 +1,12 @@
 import { Router } from "express";
 import AuthService from "./auth.service.js";
 import { schema } from "../../common/middleware/schema/schema.js";
-import { signInSchema, signUpSchema, updatePasswordSchema, updateProfileSchema } from "../../common/middleware/schema/auth.schema.js";
+import { confirmEmailSchema, emailSchema, signInSchema, signUpSchema, updatePasswordSchema, updateProfileSchema } from "../../common/middleware/schema/auth.schema.js";
 import { authentication } from "../../common/middleware/auth.middleware.js";
 const authRouter = Router({ caseSensitive: true, strict: true });
 authRouter.post("/signup", schema(signUpSchema), AuthService.signup);
+authRouter.patch("/signup/confirm-email", schema(confirmEmailSchema), AuthService.confirmEmail);
+authRouter.post("/signup/resend_otp", schema(emailSchema), AuthService.resendOtp);
 authRouter.post("/signin", schema(signInSchema), AuthService.signIn);
 authRouter.get("/refreshToken", AuthService.refreshToken);
 authRouter.get("/profile", authentication, AuthService.getProfile);

@@ -7,7 +7,10 @@ import {
   CompareHash,
   Hash,
 } from "../../common/utils/security/hash.security.js";
-import { decrypt, encrypt } from "../../common/utils/security/encrypt.security.js";
+import {
+  decrypt,
+  encrypt,
+} from "../../common/utils/security/encrypt.security.js";
 import { successResponse } from "../../common/utils/global/response.success.js";
 import { generateOtp, sendEmail } from "../../common/utils/email/send.email.js";
 import { email_Template } from "../../common/utils/email/email.template.js";
@@ -15,10 +18,14 @@ import { AppError } from "../../common/utils/global/response.error.js";
 import { ProviderEnum } from "../../common/enum/user.enum.js";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
+import  RedisService  from "../../common/service/redis.service.js";
+import { sendEmailOtp } from "../../common/utils/email/email.otp.js";
 
 class Authservice {
   private readonly _userModel = new UserRepository();
+  private readonly _redisService = RedisService;
   constructor() {}
+
   signup = async (req: Request, res: Response, next: NextFunction) => {
     let { userName, email, password, age, address, gender, phone }: SignupI =
       req.body;
@@ -26,28 +33,80 @@ class Authservice {
     if (emailExist) {
       throw new AppError("Email Already Exist", 409);
     }
-    const user = await this._userModel.create({
-      userName,
-      email,
-      password: Hash({ plainText: password }),
-      age,
-      address,
-      gender,
-      phone: phone ? encrypt(phone) : null,
-    } as Partial<UserI>);
-    const otp = await generateOtp();
-    await sendEmail({
-      to: email,
-      subject: "Email Confirmation",
-      html: email_Template(otp),
-    });
-    successResponse({ res, message: "Signup Success", data: user });
+    try {
+      const user = await this._userModel.create({
+        userName,
+        email,
+        password: Hash({ plainText: password }),
+        age,
+        address,
+        gender,
+        phone: phone ? encrypt(phone) : null,
+      } as Partial<UserI>);
+      const otp = await generateOtp();
+      await sendEmail({
+        to: email,
+        subject: "Email Confirmation",
+        html: email_Template(otp),
+      });
+      await this._redisService.setValue({
+        key: `otp::${email}`,
+        value: Hash({ plainText: `${otp}` }),
+        ttl: 60 * 2,
+      });
+      await this._redisService.setValue({
+        key: `max_otp::${email}`,
+        value: "1",
+        ttl: 60 * 5,
+      });
+      successResponse({ res, message: "Signup Success", data: user });
+    } catch (error) {
+      next(error);
+    }
   };
+
+  confirmEmail = async (req: Request, res: Response, next: NextFunction) => {
+    const { email, otp } = req.body;
+    const otpExist = await this._redisService.getValue(`otp::${email}`);
+    if (!otpExist) {
+      throw new Error("Otp Expired");
+    }
+    if (!CompareHash({ plainText: otp, cipherText: otpExist })) {
+      throw new Error("Invalid Otp");
+    }
+    const user = await this._userModel.findOneAndUpdate({
+      filter: { email, confirmed: false },
+      update: { confirmed: true },
+    });
+    if (!user) {
+      throw new Error("User Not Exist");
+    }
+    await this._redisService.deleteKey(`otp::${email}`);
+    successResponse({ res, message: "Email confirmed Succefully!" });
+  };
+
+  resendOtp = async (req: Request, res: Response, next: NextFunction) => {
+    const { email } = req.body;
+
+    const user = await this._userModel.findOne({
+      filter: { email, confirmed: false },
+    });
+    if (!user) {
+      throw new Error("User Not Exist Or Already Confirmed");
+    }
+    await sendEmailOtp(email);
+    successResponse({ res, message: "Otp Resend Succefully!" });
+  };
+
   signIn = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email, password } = req.body;
       const user = await this._userModel.findOne({
-        filter: { email, provider: ProviderEnum.local },
+        filter: {
+          email,
+          provider: ProviderEnum.local,
+          confirmed: true,
+        },
       });
       if (!user) {
         throw new AppError("User Not Exist Or Not Confirmed Yet !", 409);
@@ -124,13 +183,13 @@ class Authservice {
   };
   updateProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      let { firstName, lastName, gender, phone , age } = req.body;
+      let { firstName, lastName, gender, phone, age } = req.body;
       if (phone) {
         phone = encrypt(phone);
       }
       const user = await this._userModel.findOneAndUpdate({
         filter: { _id: req.user!._id },
-        update: { firstName, lastName, gender, phone , age },
+        update: { firstName, lastName, gender, phone, age },
       });
       if (!user) {
         throw new AppError("User Not Exist");
@@ -144,21 +203,21 @@ class Authservice {
     }
   };
   updatePassword = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    let { oldPassword, newPassword } = req.body;
-    if (
-      !CompareHash({ plainText: oldPassword, cipherText: req.user!.password })
-    ) {
-      throw new Error("Invalid old Password", { cause: 400 });
+    try {
+      let { oldPassword, newPassword } = req.body;
+      if (
+        !CompareHash({ plainText: oldPassword, cipherText: req.user!.password })
+      ) {
+        throw new Error("Invalid old Password", { cause: 400 });
+      }
+      const hashNewPassword = Hash({ plainText: newPassword });
+      req.user!.password = hashNewPassword;
+      await req.user!.save();
+      successResponse({ res });
+    } catch (error) {
+      next(error);
     }
-    const hashNewPassword = Hash({ plainText: newPassword });
-    req.user!.password = hashNewPassword;
-    await req.user!.save();
-    successResponse({ res });
-  } catch (error) {
-    next(error);
-  }
-};
+  };
 }
 
 export default new Authservice();

@@ -110,3 +110,16 @@ export const updatePasswordSchema = z
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
+
+export const confirmEmailSchema = z.object({
+  email: z.email("Email Is Reuquierd"),
+  otp: z
+    .string({
+      error: "Otp is required",
+    })
+    .length(6, "Otp must be exactly 6 characters"),
+});
+
+export const emailSchema = z.object({
+  email: z.email("Email is required")
+});
