@@ -1,8 +1,9 @@
 import {} from "../../DB/models/user.model.js";
 import { Types } from "mongoose";
 import UserRepository from "../../DB/repository/user.repository.js";
+import { OAuth2Client } from "google-auth-library";
 import { CompareHash, Hash, } from "../../common/utils/security/hash.security.js";
-import { decrypt, encrypt, } from "../../common/utils/security/encrypt.security.js";
+import { encrypt } from "../../common/utils/security/encrypt.security.js";
 import { successResponse } from "../../common/utils/global/response.success.js";
 import { generateOtp, sendEmail } from "../../common/utils/email/send.email.js";
 import { email_Template } from "../../common/utils/email/email.template.js";
@@ -54,6 +55,40 @@ class Authservice {
             next(error);
         }
     };
+    signUpWithGmail = async (req, res, next) => {
+        const { idToken } = req.body;
+        const client = new OAuth2Client();
+        const ticket = await client.verifyIdToken({
+            idToken,
+            audience: process.env.Client_ID,
+        });
+        const payload = ticket.getPayload();
+        const { email, email_verified, name } = payload;
+        if (!email)
+            throw new AppError("Email Invalid");
+        let user = await this._userModel.findOne({
+            filter: { email },
+        });
+        if (!user) {
+            user = await this._userModel.create({
+                email,
+                userName: name,
+                confirmed: email_verified,
+                provider: ProviderEnum.google,
+            });
+        }
+        if (user.provider == ProviderEnum.local) {
+            throw new Error("Please Log In In System Only", { cause: 400 });
+        }
+        const token = jwt.sign({ userId: user._id }, "DiaaDiaa", {
+            expiresIn: "1h",
+        });
+        successResponse({
+            res,
+            message: "LogIn Succefully",
+            data: { token: token },
+        });
+    };
     confirmEmail = async (req, res, next) => {
         const { email, otp } = req.body;
         const otpExist = await this._redisService.getValue(`otp::${email}`);
@@ -76,7 +111,7 @@ class Authservice {
     resendOtp = async (req, res, next) => {
         const { email } = req.body;
         const user = await this._userModel.findOne({
-            filter: { email, confirmed: false },
+            filter: { email },
         });
         if (!user) {
             throw new Error("User Not Exist Or Already Confirmed");
@@ -154,50 +189,73 @@ class Authservice {
             return next(error);
         }
     };
-    getProfile = async (req, res, next) => {
+    forgetPassword = async (req, res, next) => {
         try {
-            successResponse({
-                res,
-                data: { ...req.user.toObject(), phone: decrypt(req.user.phone) },
-            });
-        }
-        catch (error) {
-            console.log(error);
-            next(error);
-        }
-    };
-    updateProfile = async (req, res, next) => {
-        try {
-            let { firstName, lastName, gender, phone, age } = req.body;
-            if (phone) {
-                phone = encrypt(phone);
-            }
-            const user = await this._userModel.findOneAndUpdate({
-                filter: { _id: req.user._id },
-                update: { firstName, lastName, gender, phone, age },
+            const { email } = req.body;
+            const user = await this._userModel.findOne({
+                filter: {
+                    email,
+                    provider: ProviderEnum.local,
+                    confirmed: { $exists: true },
+                },
             });
             if (!user) {
-                throw new AppError("User Not Exist");
+                throw new Error("User Not Exist", { cause: 409 });
             }
-            successResponse({
-                res,
-                data: user,
-            });
+            await sendEmailOtp(email);
+            successResponse({ res, message: "Otp Send Succefully" });
         }
         catch (error) {
             next(error);
         }
     };
-    updatePassword = async (req, res, next) => {
+    confirmPassword = async (req, res, next) => {
         try {
-            let { oldPassword, newPassword } = req.body;
-            if (!CompareHash({ plainText: oldPassword, cipherText: req.user.password })) {
-                throw new Error("Invalid old Password", { cause: 400 });
+            const { email, otp } = req.body;
+            const otpValue = await this._redisService.getValue(`otp::${email}`);
+            if (!otpValue) {
+                throw new Error("Invalid or Expired OTP");
             }
-            const hashNewPassword = Hash({ plainText: newPassword });
-            req.user.password = hashNewPassword;
-            await req.user.save();
-            successResponse({ res });
+            if (!CompareHash({ plainText: otp, cipherText: otpValue })) {
+                throw new Error("Otp Is Invalid");
+            }
+            await this._redisService.deleteKey(`otp::${email}`);
+            await this._redisService.deleteKey(`max_otp::${email}`);
+            await this._redisService.setValue({
+                key: `verified_otp::${email}`,
+                value: "1",
+                ttl: 60 * 5,
+            });
+            successResponse({ res, message: "Otp Is Valid" });
+        }
+        catch (error) {
+            next(error);
+        }
+    };
+    resetPassword = async (req, res, next) => {
+        try {
+            const { email, newPassword } = req.body;
+            const isVerified = await this._redisService.getValue(`verified_otp::${email}`);
+            if (!isVerified) {
+                throw new Error("Otp not verified");
+            }
+            const user = await this._userModel.findOneAndUpdate({
+                filter: {
+                    email,
+                    provider: ProviderEnum.local,
+                    confirmed: { $exists: true },
+                },
+                update: {
+                    password: Hash({ plainText: newPassword }),
+                    logOut: new Date(),
+                },
+            });
+            if (!user) {
+                throw new Error("User Not Exist", { cause: 409 });
+            }
+            await this._redisService.deleteKey(`verified_otp::${email}`);
+            await this._redisService.deleteKey(`confirm_tries::${email}`);
+            successResponse({ res, message: "Password Reset Succefully" });
         }
         catch (error) {
             next(error);

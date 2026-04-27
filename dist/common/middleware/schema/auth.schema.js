@@ -90,5 +90,18 @@ export const confirmEmailSchema = z.object({
         .length(6, "Otp must be exactly 6 characters"),
 });
 export const emailSchema = z.object({
-    email: z.email("Email is required")
+    email: z.email("Email is required"),
+});
+export const resetPasswordSchema = z
+    .object({
+    email: z.email({ message: "Invalid email format" }).toLowerCase().trim(),
+    newPassword: z
+        .string({ error: "Password is required" })
+        .min(8, { message: "Password must be at least 8 characters" }),
+    rePassword: z.string({ error: "Confirm password is required" }),
+})
+    .strict()
+    .refine((data) => data.newPassword === data.rePassword, {
+    message: "Passwords don't match",
+    path: ["rePassword"],
 });

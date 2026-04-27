@@ -44,6 +44,8 @@ export const signInSchema = z.object({
     .min(8, "Password must be at least 8 characters"),
 });
 
+export type SigninI = z.infer<typeof signInSchema>;
+
 export const updateProfileSchema = z.object({
   firstName: z
     .string({
@@ -90,6 +92,8 @@ export const updateProfileSchema = z.object({
     .optional(),
 });
 
+export type updateProfileI = z.infer<typeof updateProfileSchema>;
+
 export const updatePasswordSchema = z
   .object({
     oldPassword: z.string({
@@ -111,6 +115,8 @@ export const updatePasswordSchema = z
     path: ["confirmPassword"],
   });
 
+export type updatePasswordI = z.infer<typeof updatePasswordSchema>;
+
 export const confirmEmailSchema = z.object({
   email: z.email("Email Is Reuquierd"),
   otp: z
@@ -120,6 +126,27 @@ export const confirmEmailSchema = z.object({
     .length(6, "Otp must be exactly 6 characters"),
 });
 
+export type confirmEmailI = z.infer<typeof confirmEmailSchema>;
+
 export const emailSchema = z.object({
-  email: z.email("Email is required")
+  email: z.email("Email is required"),
 });
+
+export type EmailI = z.infer<typeof emailSchema>;
+
+export const resetPasswordSchema = z
+  .object({
+    email: z.email({ message: "Invalid email format" }).toLowerCase().trim(),
+    newPassword: z
+      .string({ error: "Password is required" })
+      .min(8, { message: "Password must be at least 8 characters" }),
+
+    rePassword: z.string({ error: "Confirm password is required" }),
+  })
+  .strict()
+  .refine((data) => data.newPassword === data.rePassword, {
+    message: "Passwords don't match",
+    path: ["rePassword"],
+  });
+
+export type ResetPasswordI = z.infer<typeof resetPasswordSchema>;

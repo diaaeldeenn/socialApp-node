@@ -28,7 +28,7 @@ export const sendEmailOtp = async (email: string) => {
   const otp = await generateOtp();
   await sendEmail({
     to: email,
-    subject: "Welcome To SarahahApp",
+    subject: "Welcome To SocialMedia App",
     html: email_Template(otp),
   });
   await RedisService.setValue({

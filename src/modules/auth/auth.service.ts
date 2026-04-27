@@ -1,16 +1,20 @@
 import type { NextFunction, Request, Response } from "express";
 import { type UserI } from "../../DB/models/user.model.js";
-import { Types, type Model } from "mongoose";
-import type { SignupI } from "../../common/middleware/schema/auth.schema.js";
+import { Types } from "mongoose";
+import type {
+  confirmEmailI,
+  EmailI,
+  ResetPasswordI,
+  SigninI,
+  SignupI,
+} from "../../common/middleware/schema/auth.schema.js";
 import UserRepository from "../../DB/repository/user.repository.js";
+import { OAuth2Client, type TokenPayload } from "google-auth-library";
 import {
   CompareHash,
   Hash,
 } from "../../common/utils/security/hash.security.js";
-import {
-  decrypt,
-  encrypt,
-} from "../../common/utils/security/encrypt.security.js";
+import { encrypt } from "../../common/utils/security/encrypt.security.js";
 import { successResponse } from "../../common/utils/global/response.success.js";
 import { generateOtp, sendEmail } from "../../common/utils/email/send.email.js";
 import { email_Template } from "../../common/utils/email/email.template.js";
@@ -18,7 +22,7 @@ import { AppError } from "../../common/utils/global/response.error.js";
 import { ProviderEnum } from "../../common/enum/user.enum.js";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
-import  RedisService  from "../../common/service/redis.service.js";
+import RedisService from "../../common/service/redis.service.js";
 import { sendEmailOtp } from "../../common/utils/email/email.otp.js";
 
 class Authservice {
@@ -65,8 +69,44 @@ class Authservice {
     }
   };
 
+  signUpWithGmail = async (req: Request, res: Response, next: NextFunction) => {
+    const { idToken } = req.body;
+    const client = new OAuth2Client();
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience:
+        process.env.Client_ID!,
+    });
+    const payload = ticket.getPayload();
+    const { email, email_verified, name} = payload as TokenPayload;
+    if (!email) throw new AppError("Email Invalid");
+
+    let user = await this._userModel.findOne({
+      filter: { email },
+    });
+    if (!user) {
+      user = await this._userModel.create({
+        email,
+        userName: name!,
+        confirmed: email_verified!,
+        provider: ProviderEnum.google,
+      });
+    }
+    if (user.provider == ProviderEnum.local) {
+      throw new Error("Please Log In In System Only", { cause: 400 });
+    }
+    const token = jwt.sign({ userId: user._id }, "DiaaDiaa", {
+      expiresIn: "1h",
+    });
+    successResponse({
+      res,
+      message: "LogIn Succefully",
+      data: { token: token },
+    });
+  };
+
   confirmEmail = async (req: Request, res: Response, next: NextFunction) => {
-    const { email, otp } = req.body;
+    const { email, otp }: confirmEmailI = req.body;
     const otpExist = await this._redisService.getValue(`otp::${email}`);
     if (!otpExist) {
       throw new Error("Otp Expired");
@@ -86,10 +126,10 @@ class Authservice {
   };
 
   resendOtp = async (req: Request, res: Response, next: NextFunction) => {
-    const { email } = req.body;
+    const { email }: EmailI = req.body;
 
     const user = await this._userModel.findOne({
-      filter: { email, confirmed: false },
+      filter: { email },
     });
     if (!user) {
       throw new Error("User Not Exist Or Already Confirmed");
@@ -100,7 +140,7 @@ class Authservice {
 
   signIn = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, password } = req.body;
+      const { email, password }: SigninI = req.body;
       const user = await this._userModel.findOne({
         filter: {
           email,
@@ -136,6 +176,7 @@ class Authservice {
       next(error);
     }
   };
+
   refreshToken = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { refreshtoken } = req.headers;
@@ -170,50 +211,76 @@ class Authservice {
       return next(error);
     }
   };
-  getProfile = async (req: Request, res: Response, next: NextFunction) => {
+
+  forgetPassword = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      successResponse({
-        res,
-        data: { ...req.user!.toObject(), phone: decrypt(req.user!.phone!) },
-      });
-    } catch (error) {
-      console.log(error);
-      next(error);
-    }
-  };
-  updateProfile = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      let { firstName, lastName, gender, phone, age } = req.body;
-      if (phone) {
-        phone = encrypt(phone);
-      }
-      const user = await this._userModel.findOneAndUpdate({
-        filter: { _id: req.user!._id },
-        update: { firstName, lastName, gender, phone, age },
+      const { email }: EmailI = req.body;
+      const user = await this._userModel.findOne({
+        filter: {
+          email,
+          provider: ProviderEnum.local,
+          confirmed: { $exists: true },
+        },
       });
       if (!user) {
-        throw new AppError("User Not Exist");
+        throw new Error("User Not Exist", { cause: 409 });
       }
-      successResponse({
-        res,
-        data: user,
-      });
+      await sendEmailOtp(email);
+      successResponse({ res, message: "Otp Send Succefully" });
     } catch (error) {
       next(error);
     }
   };
-  updatePassword = async (req: Request, res: Response, next: NextFunction) => {
+
+  confirmPassword = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      let { oldPassword, newPassword } = req.body;
-      if (
-        !CompareHash({ plainText: oldPassword, cipherText: req.user!.password })
-      ) {
-        throw new Error("Invalid old Password", { cause: 400 });
+      const { email, otp }: confirmEmailI = req.body;
+      const otpValue = await this._redisService.getValue(`otp::${email}`);
+      if (!otpValue) {
+        throw new Error("Invalid or Expired OTP");
       }
-      const hashNewPassword = Hash({ plainText: newPassword });
-      req.user!.password = hashNewPassword;
-      await req.user!.save();
-      successResponse({ res });
+      if (!CompareHash({ plainText: otp, cipherText: otpValue })) {
+        throw new Error("Otp Is Invalid");
+      }
+      await this._redisService.deleteKey(`otp::${email}`);
+      await this._redisService.deleteKey(`max_otp::${email}`);
+      await this._redisService.setValue({
+        key: `verified_otp::${email}`,
+        value: "1",
+        ttl: 60 * 5,
+      });
+      successResponse({ res, message: "Otp Is Valid" });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  resetPassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email, newPassword }: ResetPasswordI = req.body;
+      const isVerified = await this._redisService.getValue(
+        `verified_otp::${email}`,
+      );
+      if (!isVerified) {
+        throw new Error("Otp not verified");
+      }
+      const user = await this._userModel.findOneAndUpdate({
+        filter: {
+          email,
+          provider: ProviderEnum.local,
+          confirmed: { $exists: true },
+        },
+        update: {
+          password: Hash({ plainText: newPassword }),
+          logOut: new Date(),
+        },
+      });
+      if (!user) {
+        throw new Error("User Not Exist", { cause: 409 });
+      }
+      await this._redisService.deleteKey(`verified_otp::${email}`);
+      await this._redisService.deleteKey(`confirm_tries::${email}`);
+      successResponse({ res, message: "Password Reset Succefully" });
     } catch (error) {
       next(error);
     }

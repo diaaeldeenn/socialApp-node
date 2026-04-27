@@ -8,6 +8,7 @@ import { AppError, globalErrorHandler } from "./common/utils/global/response.err
 import authRouter from "./modules/auth/auth.controller.js";
 import connectionDB from "./DB/connectionDB.js";
 import RedisService from "./common/service/redis.service.js";
+import userRouter from "./modules/users/users.controller.js";
 const app : express.Application = express();
 const port : number = Number(process.env.PORT) || 3000
 const bootstrap = async ()=>{
@@ -24,6 +25,7 @@ const bootstrap = async ()=>{
     res.status(200).json({ message: "Welcome In My Api" });
   });
   app.use("/auth",authRouter)
+  app.use("/user",userRouter)
   app.use("{/*demo}", (req:Request, res:Response) => {
     throw new AppError(`Url ${req.originalUrl} Not Found!`, 404);
   });

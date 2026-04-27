@@ -1,0 +1,16 @@
+import { Router } from "express";
+import userService from "./user.service.js";
+import { schema } from "../../common/middleware/schema/schema.js";
+import { updatePasswordSchema, updateProfileSchema,emailSchema } from "../../common/middleware/schema/auth.schema.js";
+import { authentication } from "../../common/middleware/auth.middleware.js";
+
+const userRouter = Router({ caseSensitive: true, strict: true });
+
+
+
+userRouter.get("/profile",authentication,userService.getProfile);
+userRouter.patch("/updateProfile",authentication,schema(updateProfileSchema),userService.updateProfile);
+userRouter.patch("/updatePassword",authentication,schema(updatePasswordSchema),userService.updatePassword);
+
+
+export default userRouter;
