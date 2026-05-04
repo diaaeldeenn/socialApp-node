@@ -1,5 +1,9 @@
 import mongoose, { Document, Schema, Types, model } from "mongoose";
-import { GenderEnum, ProviderEnum, RoleEnum } from "../../common/enum/user.enum.js";
+import {
+  GenderEnum,
+  ProviderEnum,
+  RoleEnum,
+} from "../../common/enum/user.enum.js";
 
 export interface UserI extends Document {
   _id: Types.ObjectId;
@@ -12,13 +16,13 @@ export interface UserI extends Document {
   phone?: string;
   address?: string;
   gender?: GenderEnum;
-  provider:ProviderEnum
+  provider: ProviderEnum;
   role: RoleEnum;
   confirmed: boolean;
   createdAt: Date;
   updatedAt: Date;
+  profilePic?: string;
 }
-
 
 const userSchema = new mongoose.Schema<UserI>(
   {
@@ -47,13 +51,17 @@ const userSchema = new mongoose.Schema<UserI>(
 
     password: {
       type: String,
-      required: true,
+      required: function (): boolean {
+        return this.provider == ProviderEnum.local ? true : false;
+      },
       minLength: 8,
     },
 
     age: {
       type: Number,
-      required: true,
+      required: function (): boolean {
+        return this.provider == ProviderEnum.local ? true : false;
+      },
       min: 18,
       max: 100,
     },
@@ -88,13 +96,14 @@ const userSchema = new mongoose.Schema<UserI>(
       type: Boolean,
       default: false,
     },
+    profilePic: String,
   },
   {
     timestamps: true,
-    strictQuery:true,
-    toJSON:{virtuals:true},
-    toObject:{virtuals:true}
-  }
+    strictQuery: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
 
 userSchema
@@ -107,7 +116,6 @@ userSchema
     this.firstName = firstName;
     this.lastName = lastName;
   });
-
 
 const userModel = mongoose.models.User || model<UserI>("user", userSchema);
 export default userModel;

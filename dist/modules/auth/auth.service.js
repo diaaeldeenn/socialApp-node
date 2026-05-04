@@ -13,9 +13,12 @@ import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
 import RedisService from "../../common/service/redis.service.js";
 import { sendEmailOtp } from "../../common/utils/email/email.otp.js";
+import { S3Service } from "../../common/service/s3.service.js";
+import { pipeline } from "node:stream/promises";
 class Authservice {
     _userModel = new UserRepository();
     _redisService = RedisService;
+    _se3 = new S3Service();
     constructor() { }
     signup = async (req, res, next) => {
         let { userName, email, password, age, address, gender, phone } = req.body;
@@ -260,6 +263,57 @@ class Authservice {
         catch (error) {
             next(error);
         }
+    };
+    uploadProfilePic = async (req, res, next) => {
+        const { ContentType, fileName } = req.body;
+        const { url, Key } = await this._se3.creatPreSignedUrl({
+            fileName,
+            ContentType,
+            path: `users/${req?.user?._id}`,
+        });
+        await this._userModel.findOneAndUpdate({
+            filter: { _id: req.user._id },
+            update: { profilePic: Key }
+        });
+        successResponse({ res, data: { url, Key } });
+    };
+    getPicture = async (req, res, next) => {
+        const { path } = req.params;
+        const Key = path.join("/");
+        const result = await this._se3.getFile(Key);
+        const stream = result.Body;
+        res.setHeader("Content-Type", result.ContentType);
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        await pipeline(stream, res);
+    };
+    getPreSignedPictures = async (req, res, next) => {
+        const { path } = req.params;
+        const Key = path.join("/");
+        const url = await this._se3.getPreSignedUrl({ Key });
+        successResponse({ res, data: url });
+    };
+    getPictures = async (req, res, next) => {
+        const { folderName } = req.query;
+        let result = await this._se3.getFiles(folderName);
+        let files = result.Contents?.map((file) => {
+            return { Key: file.Key };
+        });
+        successResponse({ res, data: files });
+    };
+    deletePicture = async (req, res, next) => {
+        const { Key } = req.query;
+        let result = await this._se3.deleteFile(Key);
+        successResponse({ res, data: result });
+    };
+    deletePictures = async (req, res, next) => {
+        const { Keys } = req.body;
+        let result = await this._se3.deleteFiles(Keys);
+        successResponse({ res, data: result });
+    };
+    deleteFolder = async (req, res, next) => {
+        const { folderName } = req.query;
+        let result = await this._se3.deleteFolder(folderName);
+        successResponse({ res, data: result });
     };
 }
 export default new Authservice();

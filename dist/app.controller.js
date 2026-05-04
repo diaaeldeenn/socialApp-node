@@ -3,11 +3,12 @@ import "dotenv/config";
 import cors from "cors";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { AppError, globalErrorHandler } from "./common/utils/global/response.error.js";
+import { AppError, globalErrorHandler, } from "./common/utils/global/response.error.js";
 import authRouter from "./modules/auth/auth.controller.js";
 import connectionDB from "./DB/connectionDB.js";
 import RedisService from "./common/service/redis.service.js";
 import userRouter from "./modules/users/users.controller.js";
+import userModel from "./DB/models/user.model.js";
 const app = express();
 const port = Number(process.env.PORT) || 3000;
 const bootstrap = async () => {
@@ -18,7 +19,7 @@ const bootstrap = async () => {
         legacyHeaders: false,
     });
     app.use(cors(), helmet(), limiter, express.json());
-    connectionDB();
+    await connectionDB();
     await RedisService.connect();
     app.get("/", (req, res) => {
         res.status(200).json({ message: "Welcome In My Api" });

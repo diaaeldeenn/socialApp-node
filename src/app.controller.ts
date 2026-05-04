@@ -1,17 +1,21 @@
-import express from "express"
-import type { NextFunction,Request,Response } from "express";
+import express from "express";
+import type { NextFunction, Request, Response } from "express";
 import "dotenv/config";
 import cors from "cors";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { AppError, globalErrorHandler } from "./common/utils/global/response.error.js";
+import {
+  AppError,
+  globalErrorHandler,
+} from "./common/utils/global/response.error.js";
 import authRouter from "./modules/auth/auth.controller.js";
 import connectionDB from "./DB/connectionDB.js";
 import RedisService from "./common/service/redis.service.js";
 import userRouter from "./modules/users/users.controller.js";
-const app : express.Application = express();
-const port : number = Number(process.env.PORT) || 3000
-const bootstrap = async ()=>{
+import userModel from "./DB/models/user.model.js";
+const app: express.Application = express();
+const port: number = Number(process.env.PORT) || 3000;
+const bootstrap = async () => {
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     limit: 200, // Limit each IP to 50 requests per `window`
@@ -19,20 +23,22 @@ const bootstrap = async ()=>{
     legacyHeaders: false,
   });
   app.use(cors(), helmet(), limiter, express.json());
-  connectionDB();
+  await connectionDB();
   await RedisService.connect();
-  app.get("/", (req:Request, res:Response) => {
+  app.get("/", (req: Request, res: Response) => {
     res.status(200).json({ message: "Welcome In My Api" });
   });
-  app.use("/auth",authRouter)
-  app.use("/user",userRouter)
-  app.use("{/*demo}", (req:Request, res:Response) => {
+  app.use("/auth", authRouter);
+  app.use("/user", userRouter);
+
+
+  app.use("{/*demo}", (req: Request, res: Response) => {
     throw new AppError(`Url ${req.originalUrl} Not Found!`, 404);
   });
   app.use(globalErrorHandler);
-  app.listen(port,()=>{
+  app.listen(port, () => {
     console.log(`Server Is Runing On Port ${port}`);
-  })
-}
+  });
+};
 
 export default bootstrap;

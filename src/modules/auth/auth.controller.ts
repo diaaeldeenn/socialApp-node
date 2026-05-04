@@ -2,6 +2,7 @@ import { Router } from "express";
 import AuthService from "./auth.service.js";
 import { schema } from "../../common/middleware/schema/schema.js";
 import { confirmEmailSchema, emailSchema, resetPasswordSchema, signInSchema, signUpSchema } from "../../common/middleware/schema/auth.schema.js";
+import { authentication } from "../../common/middleware/auth.middleware.js";
 
 
 const authRouter = Router({ caseSensitive: true, strict: true });
@@ -16,5 +17,12 @@ authRouter.post("/confirmPassword",schema(confirmEmailSchema),AuthService.confir
 authRouter.patch("/resetPassword",schema(resetPasswordSchema),AuthService.resetPassword);
 
 
+authRouter.post("/uploadProfilePic",authentication,AuthService.uploadProfilePic);
+authRouter.get("/getPictures/*path",authentication,AuthService.getPicture);
+authRouter.get("/getPreSignedPictures/*path",authentication,AuthService.getPreSignedPictures);
+authRouter.get("/pictures",authentication,AuthService.getPictures);
+authRouter.delete("/picture",authentication,AuthService.deletePicture);
+authRouter.delete("/pictures",authentication,AuthService.deletePictures);
+authRouter.delete("/folder",authentication,AuthService.deleteFolder);
 
 export default authRouter;
