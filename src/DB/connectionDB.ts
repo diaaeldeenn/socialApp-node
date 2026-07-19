@@ -1,13 +1,25 @@
 import mongoose from "mongoose";
 
-const connectionDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_LOCAL!)
-    console.log("DB Connected Succefully");
-  } catch (error) {
-    console.log(error);
-  }
+let isConnected = false;
 
+const connectionDB = async () => {
+  if (isConnected) return;
+
+  try {
+    await mongoose.connect(process.env.MONGO_URI!);
+    isConnected = true;
+    console.log("Atlas Connected Successfully");
+  } catch (error) {
+    console.log("Atlas Connection Failed");
+    console.log((error as Error).message);
+    if (process.env.NODE_ENV === "development") {
+      await mongoose.connect(process.env.MONGO_LOCAL!);
+      isConnected = true;
+      console.log("Local DB Connected");
+    } else {
+      throw error;
+    }
+  }
 };
 
 export default connectionDB;
