@@ -1,22 +1,22 @@
 import admin from "firebase-admin";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
-class NotificatonService {
+class NotificationService {
   private readonly client: admin.app.App;
-  constructor() {
-    const serviceAccount = JSON.parse(
-      readFileSync(
-        resolve(
-          process.cwd(),
-          "src/config/social-media-app-22a43-firebase-adminsdk-fbsvc-952b37de0c.json",
-        ),
-      ) as unknown as string,
-    );
 
-    this.client = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
+  constructor() {
+    this.client =
+      admin.apps.length > 0
+        ? admin.app()
+        : admin.initializeApp({
+            credential: admin.credential.cert({
+              projectId: process.env.FIREBASE_PROJECT_ID!,
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
+              privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(
+                /\\n/g,
+                "\n",
+              ),
+            }),
+          });
   }
 
   async sendNotification({
@@ -30,6 +30,7 @@ class NotificatonService {
       token,
       data,
     };
+
     return await this.client.messaging().send(message);
   }
 
@@ -41,11 +42,9 @@ class NotificatonService {
     data: { title: string; body: string };
   }) {
     await Promise.all(
-      tokens.map((token) => {
-        return this.sendNotification({ token, data });
-      }),
+      tokens.map((token) => this.sendNotification({ token, data })),
     );
   }
 }
 
-export default new NotificatonService();
+export default new NotificationService();
