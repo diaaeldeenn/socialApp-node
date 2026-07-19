@@ -27,6 +27,8 @@ RedisService.connect();
 app.get("/", (req: Request, res: Response) => {
   res.status(200).json({ message: "Welcome In My Api" });
 });
+
+
 app.use("/auth", authRouter);
 app.use("/user", userRouter);
 app.use("/posts", postRouter);

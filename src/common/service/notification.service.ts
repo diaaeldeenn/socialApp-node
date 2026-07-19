@@ -9,12 +9,10 @@ class NotificationService {
         ? admin.app()
         : admin.initializeApp({
             credential: admin.credential.cert({
-              projectId: process.env.FIREBASE_PROJECT_ID!,
-              clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
-              privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(
-                /\\n/g,
-                "\n",
-              ),
+              projectId: process.env.PROJECT_ID!,
+              clientEmail: process.env.CLIENT_EMAIL!,
+              privateKey: process.env.PRIVATE_KEY!.replace(/\\n/g, "\n"),
+              
             }),
           });
   }
@@ -26,12 +24,10 @@ class NotificationService {
     token: string;
     data: { title: string; body: string };
   }) {
-    const message = {
+    return this.client.messaging().send({
       token,
       data,
-    };
-
-    return await this.client.messaging().send(message);
+    });
   }
 
   async sendNotifications({
@@ -42,7 +38,7 @@ class NotificationService {
     data: { title: string; body: string };
   }) {
     await Promise.all(
-      tokens.map((token) => this.sendNotification({ token, data })),
+      tokens.map((token) => this.sendNotification({ token, data }))
     );
   }
 }
