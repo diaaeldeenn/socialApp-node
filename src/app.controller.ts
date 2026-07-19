@@ -1,5 +1,5 @@
 import express from "express";
-import type { NextFunction, Request, Response } from "express";
+import type {  Request, Response } from "express";
 import "dotenv/config";
 import cors from "cors";
 import helmet from "helmet";
@@ -12,7 +12,8 @@ import authRouter from "./modules/auth/auth.controller.js";
 import connectionDB from "./DB/connectionDB.js";
 import RedisService from "./common/service/redis.service.js";
 import userRouter from "./modules/users/users.controller.js";
-import userModel from "./DB/models/user.model.js";
+import postRouter from "./modules/posts/post.controller.js";
+import friendRequestRouter from "./modules/friendRequest/friendRequest.controller.js";
 const app: express.Application = express();
 const port: number = Number(process.env.PORT) || 3000;
 const bootstrap = async () => {
@@ -30,6 +31,8 @@ const bootstrap = async () => {
   });
   app.use("/auth", authRouter);
   app.use("/user", userRouter);
+  app.use("/posts", postRouter);
+  app.use("/friends", friendRequestRouter);
 
 
   app.use("{/*demo}", (req: Request, res: Response) => {

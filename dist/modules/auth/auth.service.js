@@ -15,10 +15,12 @@ import RedisService from "../../common/service/redis.service.js";
 import { sendEmailOtp } from "../../common/utils/email/email.otp.js";
 import { S3Service } from "../../common/service/s3.service.js";
 import { pipeline } from "node:stream/promises";
+import NotificationService from "../../common/service/notification.service.js";
 class Authservice {
     _userModel = new UserRepository();
     _redisService = RedisService;
     _se3 = new S3Service();
+    _notificationService = NotificationService;
     constructor() { }
     signup = async (req, res, next) => {
         let { userName, email, password, age, address, gender, phone } = req.body;
@@ -124,7 +126,7 @@ class Authservice {
     };
     signIn = async (req, res, next) => {
         try {
-            const { email, password } = req.body;
+            const { email, password, fcm } = req.body;
             const user = await this._userModel.findOne({
                 filter: {
                     email,
@@ -147,6 +149,17 @@ class Authservice {
                 expiresIn: "1y",
                 jwtid: uuid,
             });
+            if (fcm) {
+                await this._redisService.addFCM({ userId: user._id, FCMToken: fcm });
+                const tokens = await this._redisService.getFCMs({ userId: user._id });
+                await this._notificationService.sendNotifications({
+                    tokens,
+                    data: {
+                        title: `Hi ${user.firstName}`,
+                        body: `New Login At ${new Date()}`,
+                    },
+                });
+            }
             successResponse({
                 res,
                 message: "LogIn Succefully",
@@ -237,7 +250,7 @@ class Authservice {
     };
     resetPassword = async (req, res, next) => {
         try {
-            const { email, newPassword } = req.body;
+            const { email, newPassword, rePassword } = req.body;
             const isVerified = await this._redisService.getValue(`verified_otp::${email}`);
             if (!isVerified) {
                 throw new Error("Otp not verified");
@@ -273,7 +286,7 @@ class Authservice {
         });
         await this._userModel.findOneAndUpdate({
             filter: { _id: req.user._id },
-            update: { profilePic: Key }
+            update: { profilePic: Key },
         });
         successResponse({ res, data: { url, Key } });
     };

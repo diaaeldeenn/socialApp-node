@@ -1,0 +1,17 @@
+import { Router } from "express";
+import { schema } from "../../common/middleware/schema/schema.js";
+import { authentication } from "../../common/middleware/auth.middleware.js";
+import friendRequestService from "./friendRequest.service.js";
+
+const friendRequestRouter = Router({ caseSensitive: true, strict: true });
+
+
+
+friendRequestRouter.post("/",authentication,friendRequestService.sendRequest);
+friendRequestRouter.patch("/:requestId", authentication, friendRequestService.processRequest);
+friendRequestRouter.get("/received", authentication, friendRequestService.getReceivedRequests);
+friendRequestRouter.get("/sent", authentication, friendRequestService.getSendRequests);
+friendRequestRouter.delete("/remove/:target", authentication, friendRequestService.removeFriend);
+friendRequestRouter.delete("/cancel/:requestId", authentication, friendRequestService.cancelRequest);
+
+export default friendRequestRouter;

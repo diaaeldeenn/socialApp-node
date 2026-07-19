@@ -15,7 +15,7 @@ export class RedisService {
             console.log("Error To Connect With Redis");
         }
     }
-    setValue = async ({ key, value, ttl }) => {
+    setValue = async ({ key, value, ttl, }) => {
         try {
             const data = typeof value === "string" ? value : JSON.stringify(value);
             return ttl
@@ -41,7 +41,7 @@ export class RedisService {
     getValue = async (key) => {
         try {
             try {
-                return JSON.parse(await this.client.get(key));
+                return JSON.parse((await this.client.get(key)));
             }
             catch (error) {
                 return await this.client.get(key);
@@ -91,5 +91,23 @@ export class RedisService {
             console.log("error to incr operation", error);
         }
     };
+    fcmKey(userId) {
+        return `user:FCM:${userId}`;
+    }
+    async addFCM({ userId, FCMToken }) {
+        return await this.client.sAdd(this.fcmKey(userId), FCMToken);
+    }
+    async removeFCM({ userId, FCMToken }) {
+        return await this.client.sRem(this.fcmKey(userId), FCMToken);
+    }
+    async getFCMs({ userId }) {
+        return await this.client.sMembers(this.fcmKey(userId));
+    }
+    async hasFCM({ userId }) {
+        return await this.client.sCard(this.fcmKey(userId));
+    }
+    async removeFCMUser({ userId }) {
+        return await this.client.del(this.fcmKey(userId));
+    }
 }
 export default new RedisService();

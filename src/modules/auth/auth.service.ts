@@ -25,12 +25,14 @@ import { randomUUID } from "node:crypto";
 import RedisService from "../../common/service/redis.service.js";
 import { sendEmailOtp } from "../../common/utils/email/email.otp.js";
 import { S3Service } from "../../common/service/s3.service.js";
-import {pipeline} from "node:stream/promises";
+import { pipeline } from "node:stream/promises";
+import NotificationService from "../../common/service/notification.service.js";
 
 class Authservice {
   private readonly _userModel = new UserRepository();
   private readonly _redisService = RedisService;
   private readonly _se3 = new S3Service();
+  private readonly _notificationService = NotificationService;
   constructor() {}
 
   signup = async (req: Request, res: Response, next: NextFunction) => {
@@ -77,11 +79,10 @@ class Authservice {
     const client = new OAuth2Client();
     const ticket = await client.verifyIdToken({
       idToken,
-      audience:
-        process.env.Client_ID!,
+      audience: process.env.Client_ID!,
     });
     const payload = ticket.getPayload();
-    const { email, email_verified, name} = payload as TokenPayload;
+    const { email, email_verified, name } = payload as TokenPayload;
     if (!email) throw new AppError("Email Invalid");
 
     let user = await this._userModel.findOne({
@@ -143,7 +144,7 @@ class Authservice {
 
   signIn = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, password }: SigninI = req.body;
+      const { email, password, fcm }: SigninI = req.body;
       const user = await this._userModel.findOne({
         filter: {
           email,
@@ -170,6 +171,21 @@ class Authservice {
           jwtid: uuid,
         },
       );
+
+
+      //^Notifications
+      if (fcm) {
+        await this._redisService.addFCM({ userId: user._id, FCMToken: fcm });
+        const tokens = await this._redisService.getFCMs({ userId: user._id });
+        await this._notificationService.sendNotifications({
+          tokens,
+          data: {
+            title: `Hi ${user.firstName}`,
+            body: `New Login At ${new Date()}`,
+          },
+        });
+      }
+
       successResponse({
         res,
         message: "LogIn Succefully",
@@ -260,7 +276,7 @@ class Authservice {
 
   resetPassword = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, newPassword }: ResetPasswordI = req.body;
+      const { email, newPassword,rePassword }: ResetPasswordI = req.body;
       const isVerified = await this._redisService.getValue(
         `verified_otp::${email}`,
       );
@@ -289,102 +305,72 @@ class Authservice {
     }
   };
 
-
-
-
-
-
-
-
-
-
-
-  uploadProfilePic = async (req: Request, res: Response, next: NextFunction)=>{
-    const {ContentType,fileName} = req.body;
-    const {url,Key} = await this._se3.creatPreSignedUrl({
+  uploadProfilePic = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const { ContentType, fileName } = req.body;
+    const { url, Key } = await this._se3.creatPreSignedUrl({
       fileName,
       ContentType,
-      path:`users/${req?.user?._id}`,
+      path: `users/${req?.user?._id}`,
     });
     await this._userModel.findOneAndUpdate({
-      filter:{_id:req.user!._id},
-      update:{profilePic:Key}
-    })
-    successResponse({res,data:{url,Key}});
-  }
+      filter: { _id: req.user!._id },
+      update: { profilePic: Key },
+    });
+    successResponse({ res, data: { url, Key } });
+  };
 
-
-
-
-  getPicture = async (req: Request, res: Response, next: NextFunction)=>{
-    const {path} = req.params as {path:string[]};
+  getPicture = async (req: Request, res: Response, next: NextFunction) => {
+    const { path } = req.params as { path: string[] };
     const Key = path.join("/");
     const result = await this._se3.getFile(Key);
     const stream = result.Body as NodeJS.ReadableStream;
-    res.setHeader("Content-Type",result.ContentType!);
+    res.setHeader("Content-Type", result.ContentType!);
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     // res.setHeader("Content-Disposition", `attachment; filename="${path.pop()}"`); //For Download Image
-    await pipeline(stream,res)
-  }
+    await pipeline(stream, res);
+  };
 
-
-
-
-
-
-  getPreSignedPictures = async (req: Request, res: Response, next: NextFunction)=>{
-    const {path} = req.params as {path:string[]};
+  getPreSignedPictures = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const { path } = req.params as { path: string[] };
     const Key = path.join("/");
-    const url = await this._se3.getPreSignedUrl({Key});
-    successResponse({res,data:url});
-  }
+    const url = await this._se3.getPreSignedUrl({ Key });
+    successResponse({ res, data: url });
+  };
 
-
-
-
-
-
-  getPictures = async (req: Request, res: Response, next: NextFunction)=>{
-    const {folderName} = req.query as {folderName:string};
+  getPictures = async (req: Request, res: Response, next: NextFunction) => {
+    const { folderName } = req.query as { folderName: string };
     let result = await this._se3.getFiles(folderName);
-    let files = result.Contents?.map((file)=>{
-      return {Key:file.Key}
-    })
-    successResponse({res,data:files});
-  }
+    let files = result.Contents?.map((file) => {
+      return { Key: file.Key };
+    });
+    successResponse({ res, data: files });
+  };
 
-
-
-
-  deletePicture = async (req: Request, res: Response, next: NextFunction)=>{
-    const {Key} = req.query as {Key:string};
+  deletePicture = async (req: Request, res: Response, next: NextFunction) => {
+    const { Key } = req.query as { Key: string };
     let result = await this._se3.deleteFile(Key);
-    successResponse({res,data:result});
-  }
+    successResponse({ res, data: result });
+  };
 
-
-
-
-  deletePictures = async (req: Request, res: Response, next: NextFunction)=>{
-    const {Keys} = req.body as {Keys:string[]};
+  deletePictures = async (req: Request, res: Response, next: NextFunction) => {
+    const { Keys } = req.body as { Keys: string[] };
     let result = await this._se3.deleteFiles(Keys);
-    successResponse({res,data:result});
-  }
+    successResponse({ res, data: result });
+  };
 
-
-
-
-
-  deleteFolder = async (req: Request, res: Response, next: NextFunction)=>{
-    const {folderName} = req.query as {folderName:string};
+  deleteFolder = async (req: Request, res: Response, next: NextFunction) => {
+    const { folderName } = req.query as { folderName: string };
     let result = await this._se3.deleteFolder(folderName);
-    successResponse({res,data:result});
-  }
-
-
-
-
-
+    successResponse({ res, data: result });
+  };
 }
 
 export default new Authservice();

@@ -117,5 +117,5 @@ userSchema
     this.lastName = lastName;
   });
 
-const userModel = mongoose.models.User || model<UserI>("user", userSchema);
+const userModel = mongoose.models.User || model<UserI>("User", userSchema);
 export default userModel;

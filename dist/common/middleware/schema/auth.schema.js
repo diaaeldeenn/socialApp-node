@@ -30,6 +30,7 @@ export const signInSchema = z.object({
     password: z
         .string({ error: "Password is required" })
         .min(8, "Password must be at least 8 characters"),
+    fcm: z.string().optional(),
 });
 export const updateProfileSchema = z.object({
     firstName: z
