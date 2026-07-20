@@ -9,33 +9,43 @@ import {
   globalErrorHandler,
 } from "./common/utils/global/response.error.js";
 import authRouter from "./modules/auth/auth.controller.js";
+import connectionDB from "./DB/connectionDB.js";
 import RedisService from "./common/service/redis.service.js";
 import userRouter from "./modules/users/users.controller.js";
 import postRouter from "./modules/posts/post.controller.js";
 import friendRequestRouter from "./modules/friendRequest/friendRequest.controller.js";
+import socketGateway from "./modules/realtime/socket.gateway.js";
+
 const app: express.Application = express();
+const port: number = Number(process.env.PORT) || 3000;
+const bootstrap = async () => {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 200, // Limit each IP to 50 requests per `window`
+    message: "To Many Request Try After 15 Minutes",
+    legacyHeaders: false,
+  });
+  app.use(cors(), helmet(), limiter, express.json());
+  await connectionDB();
+  await RedisService.connect();
+  app.get("/", (req: Request, res: Response) => {
+    res.status(200).json({ message: "Welcome In My Api" });
+  });
+  app.use("/auth", authRouter);
+  app.use("/user", userRouter);
+  app.use("/posts", postRouter);
+  app.use("/friends", friendRequestRouter);
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 200, // Limit each IP to 50 requests per `window`
-  message: "To Many Request Try After 15 Minutes",
-  legacyHeaders: false,
-});
+  app.use("{/*demo}", (req: Request, res: Response) => {
+    throw new AppError(`Url ${req.originalUrl} Not Found!`, 404);
+  });
+  app.use(globalErrorHandler);
 
-app.use(cors(), helmet(), limiter, express.json());
-RedisService.connect();
-app.get("/", (req: Request, res: Response) => {
-  res.status(200).json({ message: "Welcome In My Api" });
-});
+  const httpServer = app.listen(port, () => {
+    console.log(`Server Is Runing On Port ${port}`);
+  });
 
+  await socketGateway.initIo(httpServer);
+};
 
-app.use("/auth", authRouter);
-app.use("/user", userRouter);
-app.use("/posts", postRouter);
-app.use("/friends", friendRequestRouter);
-
-app.use("{/*demo}", (req: Request, res: Response) => {
-  throw new AppError(`Url ${req.originalUrl} Not Found!`, 404);
-});
-app.use(globalErrorHandler);
-export default app;
+export default bootstrap;

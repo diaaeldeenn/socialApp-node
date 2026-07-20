@@ -100,23 +100,73 @@ export class RedisService {
     }
   };
 
+
+  // ============================================================================
+
+  
   fcmKey(userId: Types.ObjectId) {
     return `user:FCM:${userId}`;
   }
- async addFCM({ userId, FCMToken }: { userId: Types.ObjectId; FCMToken: string }) {
+  async addFCM({
+    userId,
+    FCMToken,
+  }: {
+    userId: Types.ObjectId;
+    FCMToken: string;
+  }) {
     return await this.client.sAdd(this.fcmKey(userId), FCMToken);
   }
-  async removeFCM({ userId, FCMToken }: { userId: Types.ObjectId; FCMToken: string }) {
+  async removeFCM({
+    userId,
+    FCMToken,
+  }: {
+    userId: Types.ObjectId;
+    FCMToken: string;
+  }) {
     return await this.client.sRem(this.fcmKey(userId), FCMToken);
   }
- async getFCMs({ userId }: { userId: Types.ObjectId;}) {
+  async getFCMs({ userId }: { userId: Types.ObjectId }) {
     return await this.client.sMembers(this.fcmKey(userId));
   }
- async hasFCM({ userId }: { userId: Types.ObjectId;}) {
+  async hasFCM({ userId }: { userId: Types.ObjectId }) {
     return await this.client.sCard(this.fcmKey(userId));
   }
- async removeFCMUser({ userId }: { userId: Types.ObjectId;}) {
+  async removeFCMUser({ userId }: { userId: Types.ObjectId }) {
     return await this.client.del(this.fcmKey(userId));
+  }
+
+
+  // ==============================================================================
+
+  socketKey(userId: Types.ObjectId) {
+    return `user:Socket:${userId}`;
+  }
+  async addSocket({
+    userId,
+    SocketId,
+  }: {
+    userId: Types.ObjectId;
+    SocketId: string;
+  }) {
+    return await this.client.sAdd(this.socketKey(userId), SocketId);
+  }
+  async removeSocket({
+    userId,
+    SocketId,
+  }: {
+    userId: Types.ObjectId;
+    SocketId: string;
+  }) {
+    return await this.client.sRem(this.socketKey(userId), SocketId);
+  }
+  async getSockets({ userId }: { userId: Types.ObjectId }) {
+    return await this.client.sMembers(this.socketKey(userId));
+  }
+  async hasSockets({ userId }: { userId: Types.ObjectId }) {
+    return await this.client.sCard(this.socketKey(userId));
+  }
+  async removeSocketUser({ userId }: { userId: Types.ObjectId }) {
+    return await this.client.del(this.socketKey(userId));
   }
 }
 

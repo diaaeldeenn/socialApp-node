@@ -3,9 +3,14 @@ import AuthService from "./auth.service.js";
 import { schema } from "../../common/middleware/schema/schema.js";
 import { confirmEmailSchema, emailSchema, resetPasswordSchema, signInSchema, signUpSchema } from "../../common/middleware/schema/auth.schema.js";
 import { authentication } from "../../common/middleware/auth.middleware.js";
+import chatRouter from "../chat/chat.controller.js";
 
 
 const authRouter = Router({ caseSensitive: true, strict: true });
+
+authRouter.use("/:userId/chat",chatRouter);
+
+
 authRouter.post("/signup",schema(signUpSchema),AuthService.signup);
 authRouter.post("/signup/gmail",AuthService.signUpWithGmail);
 authRouter.patch("/signup/confirm-email",schema(confirmEmailSchema),AuthService.confirmEmail);

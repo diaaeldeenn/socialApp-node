@@ -3,24 +3,28 @@ import { AppError } from "../utils/global/response.error.js";
 import UserRepository from "../../DB/repository/user.repository.js";
 import { Types } from "mongoose";
 const userRepo = new UserRepository();
+export const decodeToken_FetchUser = async (req) => {
+    const { token } = req.headers;
+    if (!token || typeof token !== "string") {
+        throw new AppError("Token Not Provided", 401);
+    }
+    const decoded = jwt.verify(token, process.env.JWT_TOKEN);
+    if (typeof decoded === "string") {
+        throw new AppError("Invalid Token", 401);
+    }
+    const userId = decoded.userId;
+    if (!Types.ObjectId.isValid(userId)) {
+        throw new AppError("Invalid Token Payload", 401);
+    }
+    const user = await userRepo.findById(userId);
+    if (!user) {
+        throw new AppError("User Not Found", 404);
+    }
+    return { user, decoded };
+};
 export const authentication = async (req, res, next) => {
     try {
-        const { token } = req.headers;
-        if (!token || typeof token !== "string") {
-            throw new AppError("Token Not Provided", 401);
-        }
-        const decoded = jwt.verify(token, process.env.JWT_TOKEN);
-        if (typeof decoded === "string") {
-            throw new AppError("Invalid Token", 401);
-        }
-        const userId = decoded.userId;
-        if (!Types.ObjectId.isValid(userId)) {
-            throw new AppError("Invalid Token Payload", 401);
-        }
-        const user = await userRepo.findById(userId);
-        if (!user) {
-            throw new AppError("User Not Found", 404);
-        }
+        const { user, decoded } = await decodeToken_FetchUser(req);
         req.user = user;
         req.decoded = decoded;
         next();
