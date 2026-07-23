@@ -6,3 +6,6 @@
 .env*
 
 src/DB/uploads
+
+
+dist/
